@@ -25,11 +25,22 @@ def run_query(sql: str) -> pd.DataFrame:
 
 @st.cache_data
 def get_titles() -> List[str]:
-    df = run_query(
-        "SELECT DISTINCT TITULO_BRASIL FROM read_parquet('ancine_data/*.parquet') "
-        "ORDER BY TITULO_BRASIL"
-    )
-    return df['TITULO_BRASIL'].tolist()
+    cache_file = "titles_cache.csv"
+    try:
+        df = pd.read_csv(cache_file)
+        return df['TITULO_BRASIL'].tolist()
+    except FileNotFoundError:
+        # fallback para leitura direta dos Parquets (mais lenta)
+        df = run_query(
+            "SELECT DISTINCT TITULO_BRASIL "
+            "FROM read_parquet('ancine_data/*.parquet') "
+            "ORDER BY TITULO_BRASIL"
+        )
+        # opcional: salvar cache para próxima vez
+        try:
+            df.to_csv(cache_file, index=False)
+        except Exception: pass
+        return df['TITULO_BRASIL'].tolist()
 
 # --- Sidebar Filters ---
 st.sidebar.title("Filtros")
