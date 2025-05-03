@@ -1,0 +1,17 @@
+# Dados pesados da Ancine
+ancine_data/
+tmdb_cache/
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Arquivos de cache/pip
+__pycache__/
+*.py[cod]
+*.log
+
+# Configurações do IDE
+.vscode/
+.idea/
