@@ -6,6 +6,7 @@ tmdb_cache/
 .venv/
 venv/
 env/
+.env
 
 # Arquivos de cache/pip
 __pycache__/
