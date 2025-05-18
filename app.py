@@ -8,10 +8,8 @@ import plotly.express as px
 from typing import List
 from tmdb_utils import buscar_filme_por_titulo, detalhes_completos_filme
 
-# --- Configuração da página ---
 st.set_page_config(page_title="📊 Dashboard ANCINE", layout="wide")
 
-# --- DuckDB setup ---
 @st.cache_resource
 def get_connection():
     return duckdb.connect(
@@ -30,22 +28,18 @@ def get_titles() -> List[str]:
         df = pd.read_csv(cache_file)
         return df['TITULO_BRASIL'].tolist()
     except FileNotFoundError:
-        # fallback para leitura direta dos Parquets (mais lenta)
         df = run_query(
             "SELECT DISTINCT TITULO_BRASIL "
             "FROM read_parquet('ancine_data/*.parquet') "
             "ORDER BY TITULO_BRASIL"
         )
-        # opcional: salvar cache para próxima vez
         try:
             df.to_csv(cache_file, index=False)
-        except Exception: pass
+        except Exception:
+            pass
         return df['TITULO_BRASIL'].tolist()
 
-# --- Sidebar Filters ---
 st.sidebar.title("Filtros")
-
-# Autocomplete de títulos
 titles = get_titles()
 selection = st.sidebar.selectbox(
     "🔍 Buscar (título):",
@@ -54,22 +48,16 @@ selection = st.sidebar.selectbox(
     help="Comece a digitar para autocompletar"
 )
 query = "" if selection == "(limpar pesquisa)" else selection
-
-# Define base parquet table reference
 BASE = "read_parquet('ancine_data/*.parquet')"
 
-# Período geral
-# Busca limites e converte para date
 data_bounds = run_query(
-    f"SELECT MIN(STRPTIME(DATA_EXIBICAO, '%d/%m/%Y'))::DATE AS min_date, "
-    f"MAX(STRPTIME(DATA_EXIBICAO, '%d/%m/%Y'))::DATE AS max_date "
+    f"SELECT MIN(DT_INICIO_EXIBICAO)::DATE AS min_date, "
+    f"MAX(DT_INICIO_EXIBICAO)::DATE AS max_date "
     f"FROM {BASE}"
 ).iloc[0]
-# pandas Timestamp -> datetime.date
 min_date = data_bounds['min_date'].date() if hasattr(data_bounds['min_date'], 'date') else data_bounds['min_date']
 max_date = data_bounds['max_date'].date() if hasattr(data_bounds['max_date'], 'date') else data_bounds['max_date']
 today = datetime.today().date()
-# Define período padrão
 default_end = min(today, max_date)
 default_start = default_end.replace(day=1)
 
@@ -88,7 +76,6 @@ else:
 start_date = start_dt.strftime("%Y-%m-%d")
 end_date = end_dt.strftime("%Y-%m-%d")
 
-# Estados e municípios
 states_df = run_query(
     f"SELECT DISTINCT UF_SALA_COMPLEXO AS estado FROM {BASE} ORDER BY estado"
 )
@@ -105,9 +92,8 @@ else:
     cidades_options = []
 cidades = st.sidebar.multiselect("🏘️ Município:", options=cidades_options)
 
-# Monta cláusula WHERE
 conds = [
-    f"STRPTIME(DATA_EXIBICAO, '%d/%m/%Y')::DATE BETWEEN '{start_date}' AND '{end_date}'"
+    f"DT_INICIO_EXIBICAO::DATE BETWEEN '{start_date}' AND '{end_date}'"
 ]
 if query:
     sq = query.replace("'", "''")
@@ -119,24 +105,20 @@ if cidades:
     conds.append(f"MUNICIPIO_SALA_COMPLEXO IN ({c_list})")
 where = "WHERE " + " AND ".join(conds)
 
-# Período específico do filme no sidebar
 if query:
     sq = query.replace("'", "''")
     fb = run_query(
-        f"SELECT MIN(STRPTIME(DATA_EXIBICAO, '%d/%m/%Y'))::DATE AS min_date, "
-        f"MAX(STRPTIME(DATA_EXIBICAO, '%d/%m/%Y'))::DATE AS max_date "
+        f"SELECT MIN(DT_INICIO_EXIBICAO)::DATE AS min_date, "
+        f"MAX(DT_INICIO_EXIBICAO)::DATE AS max_date "
         f"FROM {BASE} WHERE TITULO_BRASIL = '{sq}'"
     ).iloc[0]
     st.sidebar.caption(
         f"⏰ Período de exibição: {fb['min_date']:%d/%m/%Y} - {fb['max_date']:%d/%m/%Y}"
     )
 
-# --- Busca individual ---
 if query:
-    # Ajusta período interno
     start_date = fb['min_date'].strftime("%Y-%m-%d")
     end_date = fb['max_date'].strftime("%Y-%m-%d")
-    # TMDB details
     tmdb_results = buscar_filme_por_titulo(query)
     if tmdb_results:
         mv = tmdb_results[0]
@@ -160,9 +142,8 @@ if query:
                 'Duração': f"{details.get('runtime', 0)} min"
             }.items():
                 st.write(f"**{k}:** {v}")
-    # Evolução de público
     df_film = run_query(
-        f"SELECT STRPTIME(DATA_EXIBICAO, '%d/%m/%Y')::DATE AS data, "
+        f"SELECT DT_INICIO_EXIBICAO::DATE AS data, "
         f"SUM(PUBLICO::BIGINT) AS publico, COUNT(*) AS sessoes FROM {BASE} "
         + where + " GROUP BY data ORDER BY data"
     )
@@ -195,10 +176,8 @@ if query:
         st.write("Nenhuma exibição encontrada para este filme no período.")
     st.stop()
 
-# --- Dashboard Geral ---
 st.title("📽️ Painel de Bilheteria - ANCINE")
 st.markdown("---")
-# Top 10 Bilheteria & Sessões
 c1, c2 = st.columns(2)
 with c1:
     st.subheader("💰 Top 10 Bilheteria")
@@ -217,7 +196,7 @@ with c2:
     )
     fig2 = px.bar(df2, x='filme', y='sessoes', text_auto=True)
     st.plotly_chart(fig2, use_container_width=True)
-# Público por Estado vs Média por Sessão
+
 c3, c4 = st.columns(2)
 with c3:
     st.subheader("📍 Público por Estado")
@@ -225,7 +204,7 @@ with c3:
         f"SELECT UF_SALA_COMPLEXO AS uf, SUM(PUBLICO::BIGINT) AS publico FROM {BASE} " + where +
         " GROUP BY uf"
     )
-    with open('brazil_states.geojson','r',encoding='utf-8') as f:
+    with open('brazil_states.geojson', 'r', encoding='utf-8') as f:
         gj = json.load(f)
     fig3 = px.choropleth(df_e, geojson=gj, featureidkey='properties.sigla',
                          locations='uf', color='publico',
@@ -241,9 +220,9 @@ with c4:
     df_m['media_sessao'] = df_m['media_sessao'].round(2)
     fig4 = px.bar(df_m, x='filme', y='media_sessao', text_auto=True)
     st.plotly_chart(fig4, use_container_width=True)
-# Evolução e Média Móvel
+
 df_time = run_query(
-    f"SELECT STRPTIME(DATA_EXIBICAO, '%d/%m/%Y')::DATE AS date, SUM(PUBLICO::BIGINT) AS publico_diario FROM {BASE} " + where +
+    f"SELECT DT_INICIO_EXIBICAO::DATE AS date, SUM(PUBLICO::BIGINT) AS publico_diario FROM {BASE} " + where +
     " GROUP BY date ORDER BY date"
 )
 df_time['mov_avg7'] = df_time['publico_diario'].rolling(7).mean()
@@ -261,11 +240,11 @@ with c6:
     if not valid.empty:
         low = valid.min(); high = valid.max()
         li, hi = valid.idxmin(), valid.idxmax()
-        ld, hd = df_time.loc[li,'date'], df_time.loc[hi,'date']
+        ld, hd = df_time.loc[li, 'date'], df_time.loc[hi, 'date']
         fig6.add_scatter(x=[ld], y=[low], mode='markers+text', text=[f'Mín {low:.0f}'], textposition='bottom right')
         fig6.add_scatter(x=[hd], y=[high], mode='markers+text', text=[f'Máx {high:.0f}'], textposition='top right')
     st.plotly_chart(fig6, use_container_width=True)
-# Top 5 Menos Vistos & Municípios
+
 c7, c8 = st.columns(2)
 with c7:
     st.subheader('📉 Top 5 Menos Vistos (Média/Sessão)')
@@ -279,8 +258,8 @@ with c7:
 with c8:
     st.subheader('🌆 Top 5 Municípios por Público')
     df_c5 = run_query(
-    f"SELECT MUNICIPIO_SALA_COMPLEXO AS municipio, SUM(PUBLICO::BIGINT) AS total FROM {BASE} " + where +
-    " GROUP BY municipio ORDER BY total DESC LIMIT 5"
+        f"SELECT MUNICIPIO_SALA_COMPLEXO AS municipio, SUM(PUBLICO::BIGINT) AS total FROM {BASE} " + where +
+        " GROUP BY municipio ORDER BY total DESC LIMIT 5"
     )
     fig8 = px.pie(df_c5, names='municipio', values='total', hole=0.4)
     fig8.update_traces(textposition='inside', textinfo='percent+label')

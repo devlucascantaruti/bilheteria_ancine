@@ -8,7 +8,7 @@ import itertools
 
 # Diretórios
 tmp_extract = os.path.join('ancine_data', 'tmp_extract')
-base_dir   = 'ancine_data'
+base_dir = 'ancine_data'
 
 # Cria pasta temporária
 os.makedirs(tmp_extract, exist_ok=True)
@@ -37,7 +37,7 @@ def json_to_parquet_stream(input_path, output_path, prefix='data.item', chunksiz
     else:
         print(f"Nenhum registro em {input_path}, pulando JSON.")
 
-# Extrai e converte cada ZIP em Parquet individual
+# Processa arquivos ZIP
 zip_files = [f for f in os.listdir(base_dir) if f.lower().endswith('.zip')]
 for zip_name in zip_files:
     zip_path = os.path.join(base_dir, zip_name)
@@ -73,6 +73,26 @@ for zip_name in zip_files:
                     os.replace(path, out_path)
                     print(f"Movido Parquet: {out_path}")
             except Exception as e:
-                print(f"Erro ao processar {path}: {e}")
+                print(f"❌ Erro ao processar {csv_path}: {e}")
+                import traceback
+                traceback.print_exc()
+
+
+# 🆕 NOVO BLOCO: Processa arquivos CSV soltos na pasta principal
+csv_files = [f for f in os.listdir(base_dir) if f.lower().endswith('.csv')]
+for csv_name in csv_files:
+    csv_path = os.path.join(base_dir, csv_name)
+    name, _ = os.path.splitext(csv_name)
+    out_path = os.path.join(base_dir, f"{name}.parquet")
+    if os.path.exists(out_path):
+        print(f"Parquet já existe, pulando: {out_path}")
+        continue
+    try:
+        df = pd.read_csv(csv_path, sep=';', encoding='latin1')
+        table = pa.Table.from_pandas(df)
+        pq.write_table(table, out_path)
+        print(f"CSV direto -> Parquet: {out_path} ({len(df)} registros)")
+    except Exception as e:
+        print(f"Erro ao processar {csv_path}: {e}")
 
 print("✅ Processo de extração e conversão para Parquet concluído.")
